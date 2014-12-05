@@ -7,6 +7,15 @@ Changelog
 =========
 
 
+
+0.2 alpha
+---------
+
+- Per-process logging
+- PID-files basic support
+- Multiprocess architecture implemented (main process spawns watchdog and 4(hardcoded)
+  worker process each fuzzying call and writes each own log)
+
 0.1 Proof Of Concept(POC)
 ---------
 Basic draft. 
