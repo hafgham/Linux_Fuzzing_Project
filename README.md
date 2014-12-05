@@ -5,7 +5,12 @@ Linux Kernel System Calls Fuzzing
 
 Changelog
 =========
-
+0.3
+---------
++ Implemented all 15 syscals
++ Cleanup script ./stop_clean.sh to kill all zombie processes, remove pids & logs
++ directory subtree './sandbox' generation script
++ advanced fuzzing techniques different per worker process
 
 
 0.2 alpha
