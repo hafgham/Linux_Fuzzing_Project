@@ -18,6 +18,14 @@ Note: this tool may harm your Computer. Please make sure that you use on a testi
 Changelog
 =========
 
+0.5
+---------
+- Bug fixes
+- SYS_execve fuzz algorithm update
+- All warnings have been fixed
+- Code has been cleaned up
+
+
 0.4
 ---------
 - bug fixes
