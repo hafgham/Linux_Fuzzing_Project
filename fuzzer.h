@@ -1,7 +1,7 @@
 #ifndef FUZZER_H_INCLUDED
 #define FUZZER_H_INCLUDED
 
-#define SELF_VERSION           "0.1 alpha"
+#define SELF_VERSION        "0.4"
 
 //multiprocess defines
 #define WORKER_NUM          4

@@ -1,14 +1,29 @@
-Crazy Linux kernel syscall fuzzer.
+Linux kernel syscall fuzzer.
+
+
+Usage:
+
+1) First of all run makefile.sh to create the log folder, pid folder and compile fuzzer.c.
+2) run ./gentree.sh script to create victim files under ./sandbox subdir
+3) ./fuzzer
+4) ./stop_clean.sh to delete all zombie processes, pid-files and logs
+
 
 
 Changelog
 =========
 
+0.4
+---------
+- bug fixes
+- ./build.sh updated
+- worker process recreation after crash
+
 0.3
 ---------
 + Implemented all 15 syscals
 + Cleanup script ./stop_clean.sh to kill all zombie processes, remove pids & logs
-+ directory subtree './sandbox' generation script
++ directory subtree './gentree.sh' generation script
 + advanced fuzzing techniques different per worker process
 
 
@@ -28,4 +43,4 @@ with not just a random binary data as input, but kind of highly poisoned
 variable length, variable tree depth path string with some nonASCII \
 symbols (which in log substituted with '_' char to not break text output).
 We can see here no hangs no crashes. Instead syscall returns '-1'
-as designed by smart Linux devs for any incorrect path input.
+as designed by smart Linux devs for any incorrect path input. TBC.

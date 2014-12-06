@@ -209,7 +209,7 @@ static int callback_fd_pool_populate(const char *fpath, const struct stat *sb, i
 int fd_pool_populate()
 {
   fd_pool_cnt = 0;
-  nftw(SANDBOX_DIR, callback_fd_pool_populate, 1, 0 );
+  nftw(SANDBOX_DIR, callback_fd_pool_populate, 10, 0 );
 
   return 0;
 }
@@ -370,6 +370,7 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
       case FUZ_ARG_PT_REGS:
         //sandbox[argno][0] = NULL;
         fprintf(log_stream, "arg #%d = random arg\n", argno);
+        return 0;
 
       default:
         fprintf(log_stream, "<is not implemented> (fuzzing type #%d)\n", fuz_type);
