@@ -2,7 +2,6 @@
 #define SANDBOX_H_INCLUDED
 
 #include "syscall_def.h"
-//#include "syscall_def.h"
 
 #define SANDBOX_DIR  "./sandbox"    // related to current (returned by pwd)
 
@@ -17,29 +16,23 @@
 // each process will obtain it's own copy of sandbox, so don't need to care about access safety
 char sandbox[SANDBOX_REGION_NUM][SANDBOX_REGION_SIZE];
 
-
-// state of fd to use in `fd_pool_item` struct
-//#define FD_STATE_UNDEF     0
-//#define FD_STATE_ROPEN     1
-//#define FD_STATE_WOPEN     2
 #define FD_STATE_CLOSED    128
 
-#define FD_POOL_NUM_ROPEN   30  // number of open for reading fd's at fuzzer start
-#define FD_POOL_NUM_WOPEN   60  // number of open writing fd's at fuzzer start
-#define FD_POOL_NUM_CLOSED  90  // number of closed fd's at fuzzer start
+#define FD_POOL_NUM_ROPEN   50  // number of open for reading fd's at fuzzer start
+#define FD_POOL_NUM_WOPEN   50  // number of open writing fd's at fuzzer start
+#define FD_POOL_NUM_CLOSED  10  // number of closed fd's at fuzzer start
 
 // item of fd pool
 typedef struct
 {
-  int fd;
-  mode_t mode;        // one of the O_RDONLY, O_WRONLY, and O_RDWR
-  int last_scid;   // which syscall id was applied to this fd last time
+  int       fd;
+  mode_t    mode;        // one of the O_RDONLY, O_WRONLY, and O_RDWR
+  int       last_scid;       // which syscall id was applied to this fd last time
 
 } fd_pool_item;
 
 // fill fd_pool with open and closed fd's
 int fd_pool_populate();
-
 long int  sandbox_syscall_run(int scid, FILE* log_stream);
 
 #endif // SANDBOX_H_INCLUDED

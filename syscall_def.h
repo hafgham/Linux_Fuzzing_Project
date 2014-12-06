@@ -6,14 +6,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-//#include "sandbox.h"
 #define SYSCALL_NUM 15
 
 // define possible syscall argument natures
 #define  FUZ_ARG_END                 -1    // used as list terminator
 #define  FUZ_ARG_NULL                 0    // no arg or not implemented
 
-#define  FUZ_ARG_PTR                  1    // pointer
 #define  FUZ_ARG_PTR_RAND             2      // totally random ptr
 
 #define  FUZ_ARG_UINT_FD_ROPEN        3    // already open file descriptor for reading
@@ -30,7 +28,6 @@
 #define  FUZ_ARG_PATH_FILE_EXIST      10
 #define  FUZ_ARG_PATH_FILE_NONEXIST   11
 #define  FUZ_ARG_PATH_DIR_EXIST       12
-//#define  FUZ_ARG_MKNOD_MODE           13
 
 #define  FUZ_ARG_OPEN_FLAGS           14      // int
 #define  FUZ_ARG_OPEN_MODE            15      // int
@@ -44,8 +41,8 @@
 #define  FUZ_ARG_TIMESPEC             20      // timespec
 #define  FUZ_ARG_UTIMBUF              21      // utimbuf
 #define  FUZ_ARG_LSEEK_MODE           22      // uint
-#define  FUZ_ARG_PT_REGS              23      // pt_regs, single arg for SYS_execve
-
+#define  FUZ_ARG_EXECVE_ARGV          23      // execve arg
+#define  FUZ_ARG_EXECVE_ENVP          24      // execve arg
 
 
 #define  MIN_ULONG_BUFSIZE   0
@@ -54,34 +51,14 @@
 // structure defines each syscall specifics to unify calls in batches
 typedef struct
 {
-    int scid;  // system int number of syscall
-    char name[20];        // name (read, open)
-    int  argnum;          // number of arguments
-    int  arg_type[4][20];  // for each arg specifies list of possible types of parameters available
-
+    int   scid;             // system int number of syscall
+    char  name[20];         // name (read, open)
+    int   argnum;           // number of arguments
+    int   arg_type[4][20];  // for each arg specifies list of possible types of parameters available
 
 } scall_desc;
 
-// let's define list (array) of syscall currently supported by Fuzzer
-/*static const int fuzzer_call_list[] =
-{
-    SYS_read,
-    SYS_write,
-    SYS_open,
-    SYS_close,
-    SYS_creat,
-    SYS_link,
-    SYS_execve,
-    SYS_chdir,
-    SYS_time,
-    SYS_mknod,
-    SYS_chmod,
-    SYS_lchown,
-    SYS_lseek,
-    SYS_utime,
-    SYS_nanosleep
-};*/
-
+// main syscall fuzzing description array
 static const scall_desc fuzzer_call_spec_list[] =
 {
   {
@@ -96,7 +73,7 @@ static const scall_desc fuzzer_call_spec_list[] =
     SYS_write, "SYS_write", 3,
     {
       { FUZ_ARG_UINT_FD_ROPEN, FUZ_ARG_UINT_FD_WOPEN, FUZ_ARG_UINT_FD_CLOSED, FUZ_ARG_END },
-      { FUZ_ARG_BUF_GENERIC, FUZ_ARG_NULL, FUZ_ARG_PTR_RAND, FUZ_ARG_BUF_RANDFILL, FUZ_ARG_END },
+      { FUZ_ARG_BUF_GENERIC, FUZ_ARG_NULL, FUZ_ARG_BUF_RANDFILL, FUZ_ARG_END },
       { FUZ_ARG_ULONG_BUFSIZE, FUZ_ARG_END }
     }
   },
@@ -133,11 +110,11 @@ static const scall_desc fuzzer_call_spec_list[] =
     }
   },
   {
-    SYS_execve, "SYS_execve", 1,
+    SYS_execve, "SYS_execve", 3,
     {
-      { FUZ_ARG_PT_REGS, FUZ_ARG_END },
-      { FUZ_ARG_END },
-      { FUZ_ARG_END }
+      { FUZ_ARG_PATH_FILE_EXIST, FUZ_ARG_PATH_FILE_NONEXIST, FUZ_ARG_PATH_DIR_EXIST, FUZ_ARG_NULL, FUZ_ARG_END },
+      { FUZ_ARG_EXECVE_ARGV, FUZ_ARG_NULL, FUZ_ARG_END },
+      { FUZ_ARG_NULL, FUZ_ARG_END }
     }
   },
   {
@@ -151,7 +128,7 @@ static const scall_desc fuzzer_call_spec_list[] =
   {
     SYS_time, "SYS_time", 1,
     {
-      { FUZ_ARG_PTR, FUZ_ARG_END },
+      { FUZ_ARG_BUF_GENERIC, FUZ_ARG_NULL, FUZ_ARG_END },
       { FUZ_ARG_END },
       { FUZ_ARG_END }
     }
@@ -193,7 +170,7 @@ static const scall_desc fuzzer_call_spec_list[] =
     SYS_nanosleep, "SYS_nanosleep", 2,
     {
       { FUZ_ARG_TIMESPEC, FUZ_ARG_END },
-      { FUZ_ARG_TIMESPEC, FUZ_ARG_NULL, FUZ_ARG_PTR_RAND, FUZ_ARG_END },
+      { FUZ_ARG_TIMESPEC, FUZ_ARG_NULL, FUZ_ARG_END },
       { FUZ_ARG_END }
     }
   },
@@ -205,6 +182,7 @@ static const scall_desc fuzzer_call_spec_list[] =
       { FUZ_ARG_END }
     }
   },
+  // terminator
   {
    -1, "", 0,
     {
@@ -216,9 +194,7 @@ static const scall_desc fuzzer_call_spec_list[] =
 };
 
 const scall_desc*  get_scall_desc(int scid);
-
 void* sc_prepare_fuzzed_arg(int argno, int argtype);
-
 void  sanitize_args_for_call(int scid);
 
 #endif // SYSCALL_DEF_H_INCLUDED

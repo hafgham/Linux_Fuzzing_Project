@@ -20,7 +20,6 @@
 #include <time.h>
 #include <utime.h>
 
-//#include "syscall_def.h"
 #include "sandbox.h"
 
 static char callback_path_tmp[PATH_MAX];
@@ -30,7 +29,6 @@ static int  callback_fuz_arg;
 static fd_pool_item   fd_pool[FD_POOL_NUM_ROPEN + FD_POOL_NUM_WOPEN + FD_POOL_NUM_CLOSED];
 static int            fd_pool_cnt = 0;
 static fd_pool_item*  last_fd_used;
-
 
 // helper rand generator - return rand within given range
 int rrand(int min, int max)
@@ -132,13 +130,11 @@ int gen_path( int fuz_arg, char* dst )
       helper_gen_fuz_str(dst+cnt, chunk_len);
       cnt += (chunk_len-1);
       dst[cnt] = '/'; cnt++;
-
     }
 
     dst[cnt] = 0;
     return 0;
   }
-
 
   //let's choose random directory in ./sandbox subtree
   callback_fuz_arg = fuz_arg;
@@ -155,7 +151,7 @@ static int callback_fd_pool_populate(const char *fpath, const struct stat *sb, i
    int res1, res2;
 
    // is our pool already full?
-   if (fd_pool_cnt == (FD_POOL_NUM_ROPEN + FD_POOL_NUM_WOPEN + FD_POOL_NUM_CLOSED))
+   if (fd_pool_cnt >= (FD_POOL_NUM_ROPEN + FD_POOL_NUM_WOPEN + FD_POOL_NUM_CLOSED))
      return 1; // stop traversal
 
    if (tflag == FTW_F )
@@ -214,7 +210,6 @@ int fd_pool_populate()
   return 0;
 }
 
-
 // generate fuzz data in sandbox region `argno`. Type of fuzzing specified with `fuz_type`
 int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
 {
@@ -229,30 +224,11 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
   if (fuz_type == FUZ_ARG_END)
     return 0;
 
-  // actual fuzzed data generation is below
-/*
-
-#define  FUZ_ARG_LONGINT_OFFSET       7     // off_t, file position offset, signed
-
-#define  FUZ_ARG_MKNOD_MODE           11
-
-#define  FUZ_ARG_OPEN_FLAGS           12      // int
-#define  FUZ_ARG_OPEN_MODE            13      // int
-
-#define  FUZ_ARG_DEV_TYPE             14      // dev_t
-#define  FUZ_ARG_FILE_PERM_MODE       15      // mode_t, file attribute bitmasks
-
-#define  FUZ_ARG_UID                  16      // uid_t
-#define  FUZ_ARG_GID                  17      // gid_t
-
-#define  FUZ_ARG_TIMESPEC             18      // timespec
-#define  FUZ_ARG_UTIMBUF              19      // utimbuf
-#define  FUZ_ARG_LSEEK_MODE           20      // uint
-#define  FUZ_ARG_PT_REGS              21      // pt_regs, single arg for SYS_execve
-*/
-
+    // actual fuzzing data generation happens below
     switch (fuz_type)
     {
+      case FUZ_ARG_END:
+          return 0;
 
       case FUZ_ARG_NULL:
           ((void**)sandbox[argno])[0] = NULL;
@@ -261,25 +237,24 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
 
       case FUZ_ARG_BUF_GENERIC:
           ((char**)sandbox[argno])[0] = sandbox[argno];   // in first bytes we will store pointer to ourself
-          fprintf(log_stream, "arg #%d = %p\n", argno, sandbox[argno]);
+          fprintf(log_stream, "arg #%d = %p (fuz type #%d)\n", argno, sandbox[argno], fuz_type);
           return 0;
 
       case FUZ_ARG_PTR_RAND:
-          ((void**)sandbox[argno])[0] = (void*)rand();
-          fprintf(log_stream, "arg #%d = %p\n", argno, ((void**)sandbox[argno])[0]);
+          ((void**)sandbox[argno])[0] = (void *)(intptr_t)rand();
+          fprintf(log_stream, "arg #%d = %p, (fuz type #%d)\n", argno, ((void**)sandbox[argno])[0], fuz_type);
           return 0;
 
       case FUZ_ARG_BUF_RANDFILL:
           ((char**)sandbox[argno])[0] = sandbox[argno];
           for (i=0; i<SANDBOX_REGION_SIZE; i++ )
             sandbox[argno][i] = (char)(rand() % 256);
-          fprintf(log_stream, "arg #%d = %0x, %0x, %x0... random binary buffer\n", argno, ((int*)sandbox[argno])[0], ((int*)sandbox[argno])[1], ((int*)sandbox[argno])[2] );
+          fprintf(log_stream, "arg #%d = %0x, %0x, %0x, %0x... random binary buffer\n", argno, ((int*)sandbox[argno])[0], ((int*)sandbox[argno])[1], ((int*)sandbox[argno])[2], ((int*)sandbox[argno])[3] );
           return 0;
-
 
       case FUZ_ARG_ULONG_BUFSIZE:
           ((unsigned long*)sandbox[argno])[0] = rrand(MIN_ULONG_BUFSIZE, MAX_ULONG_BUFSIZE);
-          fprintf(log_stream, "arg #%d = %ld\n", argno, ((unsigned long*)sandbox[argno])[0]);
+          fprintf(log_stream, "arg #%d = %ld (fuz type #%d)\n", argno, ((unsigned long*)sandbox[argno])[0], fuz_type);
           return 0;
 
       case FUZ_ARG_UINT_FD_ROPEN:
@@ -309,12 +284,12 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
         // any other are optional
         i |= rand();
         ((int*)sandbox[argno])[0] = i;
-        fprintf(log_stream, "arg #%d = %x\n" ,argno, i);
+        fprintf(log_stream, "arg #%d = %x (fuz type #%d)\n" ,argno, i, fuz_type);
         return 0;
 
       case FUZ_ARG_OPEN_MODE:
         ((int*)sandbox[argno])[0] = i = rand();
-        fprintf(log_stream, "arg #%d = %x\n" ,argno, i);
+        fprintf(log_stream, "arg #%d = %x (fuz type #%d)\n" ,argno, i, fuz_type);
         return 0;
 
       case FUZ_ARG_FILE_PERM_MODE:
@@ -332,12 +307,12 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
       case FUZ_ARG_UID:
       case FUZ_ARG_GID:
         ((unsigned int*)sandbox[argno])[0] = ui = ((rand() << 1) + rand());
-        fprintf(log_stream, "arg #%d = %x\n", argno, ui);
+        fprintf(log_stream, "arg #%d = %x (fuz type #%d)\n", argno, ui, fuz_type);
         return 0;
 
       case FUZ_ARG_LONGINT_OFFSET:
         ((long int*)sandbox[argno])[0] = li = (long int)(rand() << 16) + rand();
-        fprintf(log_stream, "arg #%d = %ld\n", argno, li);
+        fprintf(log_stream, "arg #%d = %lx (fuz type #%d)\n", argno, li, fuz_type);
         return 0;
 
       case FUZ_ARG_LSEEK_MODE:
@@ -354,56 +329,68 @@ int sandbox_syscall_fuzarg(int argno, int fuz_type, FILE* log_stream)
         return 0;
 
       case FUZ_ARG_TIMESPEC:
-        t = (struct timespec*)sandbox[argno][0];
+        t = (struct timespec*)(intptr_t)sandbox[argno][0];
         t->tv_sec = rand()%3;
         t->tv_nsec = ((long)rand() << 16) + rand();
         fprintf(log_stream, "arg #%d = (%ld sec, %ld nanosec)\n", argno, t->tv_sec, t->tv_nsec);
         return 0;
 
       case FUZ_ARG_UTIMBUF:
-        ut = (struct utimbuf*)sandbox[argno][0];
+        ut = (struct utimbuf*)(intptr_t)sandbox[argno][0];
         ut->actime = li = (long int)(rand() << 16) + rand();
         ut->modtime = li2 = (long int)(rand() << 16) + rand();
         fprintf(log_stream, "arg #%d = (access time: %ld, mod.time: %ld)\n", argno, li, li2);
         return 0;
 
-      case FUZ_ARG_PT_REGS:
-        //sandbox[argno][0] = NULL;
-        fprintf(log_stream, "arg #%d = random arg\n", argno);
-        return 0;
+      //case FUZ_ARG_EXECVE_ENVP:
+      case FUZ_ARG_EXECVE_ARGV:
+        {
+          char *args[4];
+          int i;
+
+          args[0] = &sandbox[0][0];  //  execve required first arg must be same as filename
+          args[1] = &sandbox[argno][10000];
+          args[2] = &sandbox[argno][20000];
+          args[3] = NULL;
+          memcpy(&(sandbox[argno][0]), args, sizeof(char*)*4);
+
+          //copy strings also
+          helper_gen_fuz_str(&(sandbox[argno][10000]), 512);
+          sandbox[argno][10000+512] = '\0';
+          helper_gen_fuz_str(&(sandbox[argno][20000]), 512);
+          sandbox[argno][20000+512] = '\0';
+
+          fprintf(log_stream, "arg #%d = (fuzzing type #%d)\n", argno, fuz_type);
+          for (i=0;i<4;i++)
+          {
+            if ( args[i] == NULL )
+              break;
+
+            fprintf(log_stream, "   arg #%d[%i] = `%s`\n", argno, i, args[i] );
+          }
+
+          return 0;
+        }
 
       default:
-        fprintf(log_stream, "<is not implemented> (fuzzing type #%d)\n", fuz_type);
+        fprintf(log_stream, "<not implemented> (fuzzing type #%d)\n", fuz_type);
         return -1;
     }
-
-
 }
-
 
 // generate all fuzz arguments required by specified syscall
 int sandbox_syscall_fuzargs(int scid, FILE* log_stream)
 {
-   // int scidx;  // index in fuzzer_call_spec_list
     int argidx;
-    //int args;
     int fuz_arg_type_num;
     int fuz_arg_type[3];
     const scall_desc*  scdesc;
 
-    /*for (scidx=0; scidx<sizeof(fuzzer_call_list); scidx++)
-    {
-        if (fuzzer_call_list[scidx] == scid)
-            break;
-    }*/
-
     scdesc = get_scall_desc(scid);
+
     // if this syscall is not supported by fuzzer
     if (!scdesc)
       return -1;
-
-    // get number of args for this syscall
-    //args = scdesc.argnum;
 
     // iterate on all arguments and randomly choose fuzz type for each from available within desc
     for (argidx=0; argidx<scdesc->argnum; argidx++)
@@ -433,13 +420,10 @@ long int sandbox_syscall_run(int scid, FILE* log_stream)
     if (!scdesc)
       return -1;
 
-
     fprintf(log_stream, "************************************************************************\n");
     fprintf(log_stream, "[%d] system call #%d = `%s`, %d argument(-s):\n\n" , getpid(), scid, scdesc->name, scdesc->argnum);
 
-
     sandbox_syscall_fuzargs(scid, log_stream);   // prepare fuzzed arg data in sandbox
-
 
     fprintf(log_stream, "\ncalling.... ");
     // ensure last buffered log data was stored to file before critical syscall
@@ -447,7 +431,6 @@ long int sandbox_syscall_run(int scid, FILE* log_stream)
     // do all possible things to flush cached data to hard driveb before probable crash during syscall
     fflush(log_stream);
     fsync( fileno(log_stream) );
-    //sync();
 
     //depending on number of syscall args pass pointers to prepopulated sandbox regions
     switch (scdesc->argnum)
@@ -486,7 +469,6 @@ long int sandbox_syscall_run(int scid, FILE* log_stream)
               last_fd_used->last_scid = scid;
               last_fd_used->mode = FD_STATE_CLOSED;
           break;
-
 
           default:
           break;

@@ -1,10 +1,14 @@
 #ifndef FUZZER_H_INCLUDED
 #define FUZZER_H_INCLUDED
 
-#define SELF_VERSION        "0.4"
+#define SELF_VERSION        "0.5"
+
+//uncomment to debug fork stuff
+//#define DEBUG_FORK         // used to see detailed process table updates
 
 //multiprocess defines
 #define WORKER_NUM          4
+#define PPD_SIZE            WORKER_NUM+2
 
 #define PROC_TYPE_DEF       -1   // default,  used as argument to autodetect, etc
 #define PROC_TYPE_MAIN      0

@@ -8,12 +8,9 @@
 
 #include <sys/wait.h>
 #include <sys/resource.h>
-//include all supported by fuzzer syscall definition structures
 
 #include "fuzzer.h"
 #include "sandbox.h"
-//#include "syscall_def.h"
-
 
 // global shared multiprocess data
 typedef struct {
@@ -25,25 +22,51 @@ typedef struct {
 
 } proc_desc;
 
-static volatile proc_desc  ppd[WORKER_NUM+5];
-static volatile int proc_desc_cnt = 0;
+static proc_desc  ppd[PPD_SIZE];
+static int proc_desc_cnt = 0;
 
 char log_strbuf[2048*10];
+char strbuf [64*1024];
+char outbuf [64*1024];
+
+// for debug only
+// dumps  ppd array to stdout - process statuses
+void dump_ppd()
+{
+#ifdef DEBUG_FORK
+  int i;
+  printf("\n   PPD dump (we are pid=%d):\n", getpid());
+
+  for (i=0;i<PPD_SIZE;i++)
+  {
+      printf("       idx=%d, ptype=%d, id=%d, pid=%d, died=%d [proc_desc_cnt=%d]\n", i, ppd[i].ptype, ppd[i].id, ppd[i].pid, ppd[i].died, proc_desc_cnt);
+  }
+#endif
+}
 
 // to use as advance seed for rand() to make random generator much better
 // returns the number of cycles used by the processor since the start.
 // It can be obtained on x86 processors (Intel, AMD), with the assembly command rdtsc
-int rdtsc()
+unsigned int rdtsc()
 {
-  __asm__ __volatile__("rdtsc");
-}
+#ifdef __i386
+  unsigned long long x;
+  __asm__ volatile ("rdtsc" : "=A" (x));
+  return (unsigned int)x;
 
+#elif __amd64
+  unsigned long long a, d;
+  __asm__ volatile ("rdtsc" : "=a" (a), "=d" (d));
+  return (unsigned int)((d<<32) | a);
+
+#endif
+}
 
 //return our worker process description structure by pid
 proc_desc* get_proc_desc(int pid)
 {
   int i;
-  for (i=0;i<proc_desc_cnt;i++)
+  for (i=0;i<PPD_SIZE;i++)
   {
       if (ppd[i].pid == pid)
         return &ppd[i];
@@ -58,7 +81,6 @@ proc_desc* register_new_process(int pid, int ptype, int id, int replace_died_pid
   char str[64], str2[64];
   FILE *fpid;
   proc_desc *pd = NULL;
-  //char prefix = 0;
 
   if (replace_died_pid)
   {
@@ -96,7 +118,6 @@ proc_desc* register_new_process(int pid, int ptype, int id, int replace_died_pid
   sprintf(str, "log/%s%d.log", str2, pid);
   pd->flog = fopen(str, "w");
 
-
   return pd;
 }
 
@@ -121,9 +142,6 @@ int unregister_process(int pid, int ptype)
    return remove(str);
 }
 
-// restore ppd array from pid files
-
-
 // write log
 int log_(int pid, const char *src, int ptype)
 {
@@ -133,23 +151,15 @@ int log_(int pid, const char *src, int ptype)
 
   if (!pd)
     return -1;
-    //pd = register_new_process(pid, ptype);
 
   fprintf(pd->flog, "[%d] %s\n", pid, src);
 
   // flush last log entries to disk to protect from possible process crash
   fflush(pd->flog);
   fsync( fileno(pd->flog) );
-  //sync();
 
   return 0;
 }
-
-// another log call with custom params
-//static int log(int pid, int ptype = PROC_TYPE_DEF)
-//{
-
-//}
 
 // close log
 static int close_log(int pid)
@@ -170,15 +180,8 @@ static int close_log(int pid)
 static FILE* get_log_stream(int pid)
 {
    proc_desc *pd = get_proc_desc(pid);
-
    return (pd)? pd->flog : NULL;
 }
-
-
-char strbuf [64*1024];
-char outbuf [64*1024];
-
-//int helper_gen_fuz_str(char* ptr, int cnt);
 
 //****************************************************
 void  helper_log_fix_str(char* src, char* dst)
@@ -187,43 +190,42 @@ void  helper_log_fix_str(char* src, char* dst)
 
   while( src[i] && i < MAX_LEN_STR)
   {
-
     dst[i]  = isgraph(src[i])? src[i] : '_';
     i++;
-
   }
-
   dst[i] = 0;
 }
 
 // child termination support
 void SIGCHLD_handler(sig)
 {
-  pid_t pid;
-  //get_proc_desc;
-  proc_desc* pd;
-  //proc_desc* self;
+  while (1) {
+    int status;
+    proc_desc* pd;
 
+    pid_t pid = waitpid(-1, &status, WNOHANG);
 
-  pid = wait(NULL);
+    if (pid <= 0) {
+        break;
+    }
 
-  if (!pid)
-    return;
+    dump_ppd();
 
-  pd = get_proc_desc(pid);
+    pd = get_proc_desc(pid);
 
-  if (!pd)
-    return;
+    if (!pd)
+      return;
 
-  // flag to recreate worker ASAP
-  pd->died = 1;
+    // flag to recreate worker ASAP
+    pd->died = 1;
 
-  printf("Worker #%d crashed. Pid=%d\n", pd->id, pid);
+    printf("Worker #%d crashed. Pid=%d\n", pd->id, pid);
 
-  //self = get_proc_desc( getpid() );
-  //fprintf(self->flog, "Worker #%d crashed. Pid=%d\n");
-  sprintf( log_strbuf, "Worker #%d crashed. Pid=%d", pd->id, pid);
-  log_(getpid(), log_strbuf, PROC_TYPE_DEF );
+    sprintf( log_strbuf, "Worker #%d crashed. Pid=%d", pd->id, pid);
+    log_(getpid(), log_strbuf, PROC_TYPE_DEF );
+
+    dump_ppd();
+  }
 }
 
 
@@ -249,38 +251,15 @@ void signal_handler(sig)
 long sc_batch_single(int scid, int times)
 {
    int i;
-   //char* sp;
    long ret;
 
    if (scid < 0)
      return -1;
 
-   //fprintf(get_log_stream(getpid()), "... scid %d\n", scid);
-
    for (i=0; i<times; i++)
    {
-     //let's fuzz call #scid once
-     //gen_fuz_path_dir( strbuf );
-
-     /*gen_path( FUZ_ARG_PATH_FILE_NONEXIST, strbuf );
-     helper_log_fix_str(strbuf, outbuf);
-
-
-     log(getpid(), "***********************************************", PROC_TYPE_DEF );
-     sprintf( log_strbuf, "call -> sys_chdir(#1), \n\n#1 = `%s`\n\n", outbuf);
-     log(getpid(), log_strbuf, PROC_TYPE_DEF );
-
-     // SYSTEM CALL is here
-     ret = syscall(SYS_chdir, strbuf);
-     sprintf( log_strbuf, "ret: %ld\n\n", ret );
-     log(getpid(), log_strbuf, PROC_TYPE_DEF );*/
-
-
-     //log_(getpid(), "***********************************************\n", PROC_TYPE_DEF );
      ret = sandbox_syscall_run( scid, get_log_stream(getpid()) );
-
-
-     sleep(1);  //replace with nanosleep syscall
+     sleep(1);
    }
    return ret;
 }
@@ -316,13 +295,11 @@ void sc_batch_random(int times)
 // worker function - never exited
 void worker(int id)
 {
-        // child process run here
+          // child process run here
           setpgid(0, 0);
 
           // randomize each child process random ganarator
-          //srand((unsigned) time(&t));
           srand(rdtsc());
-
 
           signal(SIGTSTP,SIG_IGN); /* ignore tty signals */
           signal(SIGTTOU,SIG_IGN);
@@ -330,10 +307,7 @@ void worker(int id)
           signal(SIGHUP, signal_handler); /* catch hangup signal */
           signal(SIGTERM, signal_handler); /* catch kill signal */
 
-          //sprintf( log_strbuf, "Worker process #%d log.", i );
-          //log_(getpid(), log_strbuf, PROC_TYPE_WORKER );
           fprintf(get_log_stream(getpid()), "Worker process #%d log. pid=%d\n", id, getpid());
-
           sleep(1);
 
           // we need to preallocate some resources - fd's...
@@ -341,20 +315,6 @@ void worker(int id)
 
           while(1)
           {
-            /*sc_batch_single(SYS_read, 1);
-            sc_batch_single(SYS_write, 1);
-            sc_batch_single(SYS_chdir, 1);
-            sc_batch_single(SYS_open, 1);
-            sc_batch_single(SYS_close, 1);
-            sc_batch_single(SYS_creat, 1);
-            sc_batch_single(SYS_link, 1);
-            sc_batch_single(SYS_time, 1);
-            sc_batch_single(SYS_mknod, 1);
-            sc_batch_single(SYS_chmod, 1);
-            sc_batch_single(SYS_lchown, 1);
-            sc_batch_single(SYS_lseek, 1);
-            sc_batch_single(SYS_nanosleep, 1);
-*/
             switch (id)
             {
               case 0:
@@ -377,44 +337,29 @@ void worker(int id)
                 sc_batch_roundrobbin(1);
               break;
             }
-
-
             sleep(1);
           }
 
         unregister_process(getpid(), PROC_TYPE_DEF);
         close_log(getpid());
-        return 1;
-
+        return;
 }
 
-
-
-
+// execution starts here
 int main()
 {
-  //FILE *fp;
-  char log_strbuf[2048];
-
-  //char str[128];
-  char dir_pid[8];
-  //long ret;
-  int  id; //, sysPID = syscall(SYS_getpid);
+  char  dir_pid[8];
+  int   id;
   pid_t fork_res;
 
-  //if main pid file exist we should start in shell-only mode (display statuses, etc
   DIR *dir;
   struct dirent *ent;
   int tick = 0;
-  //time_t t;
-
-
 
   if ((dir = opendir ("pid/")) != NULL)
   {
     while ((ent = readdir (dir)) != NULL)
     {
-      //printf ("%s\n", ent->d_name);
       if (sscanf(ent->d_name, "main_%4s.pid", dir_pid) == 1)
       {
         printf("Fuzzer main process (pid=%s) already running. Please see log updates...\n\n", dir_pid);
@@ -432,10 +377,9 @@ int main()
       if (fork_res > 0 && id==0)
       {
         sprintf(log_strbuf, "Fuzzer v.%s Logging started.\n", SELF_VERSION);
-        printf(log_strbuf);
+        puts(log_strbuf);
         log_(getpid(), log_strbuf, PROC_TYPE_MAIN );
       }
-
 
       if (fork_res > 0)
         setpgid(fork_res, 0);  // set parent to be a process group leader
@@ -452,31 +396,19 @@ int main()
       //init tasks which are common for parent & child
       register_new_process(getpid(), fork_res? PROC_TYPE_MAIN : PROC_TYPE_WORKER, id, 0);
 
-      //if (!fork_res || i==0)  // print start log msg for main process only once
-      //  log_(getpid(), "Logging started",PROC_TYPE_DEF );
-
-
       if (fork_res == 0)
         worker(id);  // never returns !!!
 
+      //main process continues here after next worker creation
+      sprintf( log_strbuf, "Just created child worker process #%d with pid=%d.", id, fork_res);
 
-   //main process continues here after next worker creation
+      log_(getpid(), log_strbuf, PROC_TYPE_DEF );
 
-   //log(getpid(), "Main process log.",PROC_TYPE_DEF );
-   sprintf( log_strbuf, "Just created child worker process #%d with pid=%d.", id, fork_res);
-
-   log_(getpid(), log_strbuf, PROC_TYPE_DEF );
-
-   // register this child in our main table
-   register_new_process(fork_res, PROC_TYPE_WORKER, id, 0);
-
-   //sleep(1);
+      // register this child in our main table
+       register_new_process(fork_res, PROC_TYPE_WORKER, id, 0);
   }
 
-  //main process continues here after ALL worker processes creation
-
-  //close_log(getpid());
-  //unregister_process(getpid(), PROC_TYPE_MAIN);
+  //main process continues run HERE after ALL worker processes creation
 
   // fork watchdog here
   fork_res=fork();
@@ -496,6 +428,7 @@ int main()
 
       log_(getpid(), "WatchDog process log start.", PROC_TYPE_DEF );
 
+      // WD loop never returns
       while(1)
       {
           int i=0;
@@ -504,22 +437,19 @@ int main()
           {
               if (ppd[i].pid != 0)
               {
-                //printf("   pid=%d\n", ppd[i].pid);
                 log_(getpid(), "Watching for workers... ", PROC_TYPE_DEF );
               }
           }
-
           sleep(30);
       }
   }
 
-  // main process runs here after WD creation
+  // main process runs HERE after WD creation
   sprintf( log_strbuf, "Just created WatchDog process with pid=%d.", fork_res);
   log_(getpid(), log_strbuf, PROC_TYPE_DEF );
 
   id = 0;
 
-  //wait();
   while(1)
   {
       int i;
@@ -531,36 +461,31 @@ int main()
           continue;
 
         sprintf(log_strbuf, "Reforking worker #%d with new pid=%d\n", ppd[i].id, fork_res);
-        printf(log_strbuf);
+        puts(log_strbuf);
         log_(getpid(), log_strbuf, PROC_TYPE_MAIN );
-
-        // make sure we don't try to recteate it one more time later
-        ppd[i].died = 0;
 
         fork_res=fork();
 
         // main process continue to check for died
          if (fork_res > 0)
+         {
+            // update ppd for reforked child worker
+            register_new_process(fork_res, PROC_TYPE_WORKER, ppd[i].id, ppd[i].pid);
+            dump_ppd();
             continue;
+         }
 
         // we are a new child
-
-        // process children termination
-        signal(SIGCHLD, SIGCHLD_handler);
-
-        //init tasks which are common for parent & child
         register_new_process(getpid(), PROC_TYPE_WORKER, ppd[i].id, ppd[i].pid);  // last arg mean old pid to replace instead of allocating new worker
 
         worker(ppd[i].id);  // never returns !!!
       }
 
-
       printf("Nothing to do for main process... %d\n", tick);
+      dump_ppd();
       sleep(5);
       tick++;
   }
 
-
   return 0;
 }
-
