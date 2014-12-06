@@ -13,7 +13,7 @@ How to use this tool:
 
 4) ./stop_clean.sh to delete all zombie processes, pid-files and logs
 
-
+Note: this tool may harm your Computer. Please make sure that you use on a testing machine that does not have important information to avoid loosing these information.
 
 Changelog
 =========
