@@ -6,8 +6,11 @@ Linux Kernel System Calls Fuzzing
 How to use this tool:
 
 1) First of all run makefile.sh to create the log folder, pid folder and compile fuzzer.c.
+
 2) run ./gentree.sh script to create victim files under ./sandbox subdir
+
 3) ./fuzzer
+
 4) ./stop_clean.sh to delete all zombie processes, pid-files and logs
 
 
